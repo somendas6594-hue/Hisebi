@@ -185,8 +185,12 @@ public class MainActivity extends Activity {
         }
         LinearLayout row = Ui.hbox(this);
         row.setPadding(0, Ui.dp(this, 12), 0, 0);
-        row.addView(miniStat("Money in", Ui.money(s.income), Ui.GREEN), Ui.weight(1));
-        row.addView(miniStat("Not counted", Ui.money(s.notCounted), Ui.MUTED), Ui.weight(1));
+        View in = miniStat("Money in ›", Ui.money(s.income), Ui.GREEN);
+        in.setOnClickListener(v -> TransactionsActivity.openKind(this, offset, "income"));
+        View out = miniStat("Not counted ›", Ui.money(s.notCounted), Ui.MUTED);
+        out.setOnClickListener(v -> TransactionsActivity.openKind(this, offset, "notcounted"));
+        row.addView(in, Ui.weight(1));
+        row.addView(out, Ui.weight(1));
         total.addView(row);
         TextView why = Ui.text(this, "Not counted = credit card bill payments, investments and self transfers. "
                 + "Card swipes are counted on the day you spend.", 11, Ui.MUTED, false);

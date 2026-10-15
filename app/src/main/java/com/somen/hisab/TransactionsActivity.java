@@ -29,7 +29,7 @@ import java.util.Set;
 public class TransactionsActivity extends Activity {
 
     private long start, end;
-    private String category, mode, merchant;
+    private String category, mode, merchant, kind;
     private String search = "";
     private final List<Txn> items = new ArrayList<>();
     private Adapter adapter;
@@ -48,6 +48,15 @@ public class TransactionsActivity extends Activity {
         c.startActivity(i);
     }
 
+    public static void openKind(Context c, int monthOffset, String kind) {
+        Intent i = new Intent(c, TransactionsActivity.class);
+        i.putExtra("start", Ui.monthStart(monthOffset));
+        i.putExtra("end", Ui.monthEnd(monthOffset));
+        i.putExtra("month", Ui.monthLabel(monthOffset));
+        i.putExtra("kind", kind);
+        c.startActivity(i);
+    }
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -57,8 +66,10 @@ public class TransactionsActivity extends Activity {
         category = in.getStringExtra("category");
         mode = in.getStringExtra("mode");
         merchant = in.getStringExtra("merchant");
+        kind = in.getStringExtra("kind");
         String month = in.getStringExtra("month");
-        String what = category != null ? category : mode != null ? mode : merchant != null ? merchant : "All transactions";
+        String what = category != null ? category : mode != null ? mode : merchant != null ? merchant
+                : "income".equals(kind) ? "Money in" : "notcounted".equals(kind) ? "Not counted" : "All transactions";
         setTitle(what);
         if (getActionBar() != null) getActionBar().setDisplayHomeAsUpEnabled(true);
 
@@ -107,12 +118,16 @@ public class TransactionsActivity extends Activity {
         counted = db.countedCategories();
         cats = db.categoryMap();
         items.clear();
-        items.addAll(db.list(start, end, category, mode, merchant, search));
+        for (Txn t : db.list(start, end, category, mode, merchant, search)) {
+            if ("income".equals(kind) && !Db.isIncome(t, counted)) continue;
+            if ("notcounted".equals(kind) && !Db.isNotCounted(t, counted)) continue;
+            items.add(t);
+        }
         double spent = 0, in = 0;
         for (Txn t : items) {
             double v = Db.spendValue(t, counted);
             spent += v;
-            if (v == 0 && ParsedTxn.CREDIT.equals(t.type) && !t.excluded && !t.duplicate) in += t.amount;
+            if (Db.isIncome(t, counted)) in += t.amount;
         }
         String s = items.size() + (items.size() == 1 ? " transaction" : " transactions") + " · spent " + Ui.money(spent);
         if (in > 0) s += " · in " + Ui.money(in);

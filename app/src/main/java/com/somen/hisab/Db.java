@@ -491,6 +491,20 @@ public final class Db extends SQLiteOpenHelper {
         return 0;
     }
 
+    /** Real money in: salary, refunds, money from others. Not your own transfers or investment redemptions. */
+    public static boolean isIncome(Txn t, Set<String> countedCats) {
+        if (!ParsedTxn.CREDIT.equals(t.type) || t.excluded || t.duplicate) return false;
+        if (spendValue(t, countedCats) != 0) return false;
+        String c = t.category;
+        return !(Categorizer.SELF.equals(c) || Categorizer.INVESTMENTS.equals(c) || Categorizer.CARD_BILL.equals(c));
+    }
+
+    /** Left out of spending: card bill payments, your own transfers, investments, anything you excluded. */
+    public static boolean isNotCounted(Txn t, Set<String> countedCats) {
+        if (t.excluded || t.duplicate) return false;
+        return !ParsedTxn.CREDIT.equals(t.type) && spendValue(t, countedCats) == 0;
+    }
+
     public Set<String> countedCategories() {
         Set<String> s = new HashSet<>();
         for (Category c : categories()) if (c.counted && !Categorizer.neverCounted(c.name)) s.add(c.name);
@@ -512,11 +526,12 @@ public final class Db extends SQLiteOpenHelper {
                 }
             } else if (t.excluded || t.duplicate) {
                 // ignored entirely
-            } else if (ParsedTxn.CREDIT.equals(t.type)) {
+            } else if (isIncome(t, counted)) {
                 s.income += t.amount;
-            } else {
+            } else if (!ParsedTxn.CREDIT.equals(t.type)) {
                 s.notCounted += t.amount;
             }
+            // money coming back from your own accounts / investments is neither income nor spending
         }
         return s;
     }
