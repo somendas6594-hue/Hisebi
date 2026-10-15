@@ -158,7 +158,7 @@ public final class Categorizer {
     public static class Ctx {
         public List<String[]> userRules = java.util.Collections.emptyList();
         public java.util.Set<String> ownAccounts = java.util.Collections.emptySet(); // last 4 digits
-        public List<String> myNames = java.util.Collections.emptyList();            // e.g. "SOMEN DAS"
+        public List<String> myNames = java.util.Collections.emptyList();            // e.g. "RAHUL KUMAR"
         public String sender = "";
     }
 

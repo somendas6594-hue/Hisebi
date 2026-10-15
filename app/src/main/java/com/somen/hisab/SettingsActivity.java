@@ -198,7 +198,7 @@ public class SettingsActivity extends Activity {
         LinearLayout box = dialogBox();
         EditText names = new EditText(this);
         names.setText(db.meta(Db.KEY_MY_NAMES, ""));
-        names.setHint("e.g. SOMEN DAS, SUMEN DAS");
+        names.setHint("e.g. RAHUL KUMAR, R KUMAR");
         box.addView(names);
         box.addView(Ui.text(this, "Separate names with commas.", 11, Ui.MUTED, false));
         new AlertDialog.Builder(this)

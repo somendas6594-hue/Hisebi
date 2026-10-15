@@ -68,7 +68,7 @@ public final class Db extends SQLiteOpenHelper {
     private static void seedNames(SQLiteDatabase db) {
         ContentValues v = new ContentValues();
         v.put("k", KEY_MY_NAMES);
-        v.put("v", "SOMEN DAS, SUMEN DAS");
+        v.put("v", "");
         db.insertWithOnConflict("meta", null, v, SQLiteDatabase.CONFLICT_IGNORE);
     }
 

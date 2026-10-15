@@ -41,18 +41,18 @@ public class ParserTest {
         check("AX-HDFCBK", "Rs.450.00 debited from HDFC Bank Debit Card XX9911 at DMART AVENUE SUPERMARTS on 12-10-26", D, 450.0, null, "Groceries");
         check("JD-SBIINB", "Dear Customer, INR 25,000.00 credited to your A/c No XX1234 on 15/10/2026 through IMPS by RAHUL KUMAR. Avl bal INR 60,000.00 -SBI", C, 25000.0, "RAHUL KUMAR", null);
         check("AD-HDFCBK", "Txn Rs.799.00\nOn HDFC Bank Card 5678\nAt bookmyshow\nby UPI 628512312312\nOn 12-10\nNot You?\nCall 18002586161", D, 799.0, "BOOKMYSHOW", "Entertainment");
-        // ---- formats seen in the owner's real SMS (numbers changed) ----
-        check("AX-AXISBK-S", "Spent\nINR 450.00\nAxis Bank Card no. XX1111\n08-10-26 20:02:48 IST\nSwiggy Limi\nAvl Limit: INR 4,21,157.32\nNot you? SMS BLOCK 1111 to 919999999999", D, 450.0, "SWIGGY LIMI", "Food & dining");
-        check("AD-AXISBK-S", "INR 300.00 debited\nA/c no. XX2222\n28-09-26, 08:22:22\nUPI/P2M/088274757482/SRI LAKSHMI RAMANA\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 300.0, "SRI LAKSHMI RAMANA", null);
-        check("AD-AXISBK-S", "INR 60000.00 debited\nA/c no. XX2222\n27-01-26, 09:25:02\nUPI/P2A/832794669782/SUMEN  DAS\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 60000.0, "SUMEN DAS", null);
-        check("AD-AXISBK-S", "INR 150000.00 debited\nA/c no. XX2222\n12-03-26, 16:51:50\nUPI/P2M/643718648612/MUTUAL FUNDS ICCL\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 150000.0, "MUTUAL FUNDS ICCL", "Investments");
+        // ---- more bank formats (made-up values) ----
+        check("AX-AXISBK-S", "Spent\nINR 450.00\nAxis Bank Card no. XX1111\n08-10-26 20:02:48 IST\nSwiggy Limi\nAvl Limit: INR 1,00,000\nNot you? SMS BLOCK 1111 to 919999999999", D, 450.0, "SWIGGY LIMI", "Food & dining");
+        check("AD-AXISBK-S", "INR 300.00 debited\nA/c no. XX2222\n28-09-26, 08:22:22\nUPI/P2M/111122223333/SHREE GANESH STORES\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 300.0, "SHREE GANESH STORES", null);
+        check("AD-AXISBK-S", "INR 5000.00 debited\nA/c no. XX2222\n27-01-26, 09:25:02\nUPI/P2A/444455556666/RAVI  KUMAR\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 5000.0, "RAVI KUMAR", null);
+        check("AD-AXISBK-S", "INR 25000.00 debited\nA/c no. XX2222\n12-03-26, 16:51:50\nUPI/P2M/777788889999/MUTUAL FUNDS ICCL\nNot you? SMS BLOCKUPI Cust ID to 919999999999\nAxis Bank", D, 25000.0, "MUTUAL FUNDS ICCL", "Investments");
         check("JD-YESBNK-S", "SGD 12.50 spent on your Card 5XXXXXXXX1 on 01-05-26 Your SGD wallet debited by 12.50 Available Bal is SGD 100", null, null, null, null);
         check("VK-AXISBK-S", "INR 149.00 for Google Play will be auto-debited via Axis Bank Card no. XX1111 by 08-10-26. Please ensure sufficient limit", null, null, null, null);
-        check("AX-AXISBK-S", "Your NEFT txn with ref. no. AXOMB123 for INR 20000 is credited to beneficiary Sadhan Das on 01-09-26 at 10:00:00 IST - Axis Bank", D, 20000.0, "SADHAN DAS", "Sent to people");
-        check("AD-AIRBIL-S", "Hi Somen Das, we have received a payment of Rs. 1178 for your Airtel Wi-Fi ID 123_dsl. To download the payment receipt, click https://x", null, null, null, null);
-        check("AD-INDUSB-S", "Service Alert: Manage this purchase better and split your INR 11321 spend at NARAYANA HEALTH INS Bengaluru into EMIs.", null, null, null, null);
-        check("JM-KOTAKB-S", "INR 40,604.00 is debited from your Account XXXXXX3333 on 07/10/2026 towards NACH-10-HDFC BANK LIMITED Kotak Bank", D, 40604.0, null, "Loan EMI");
-        check("AD-AXISBK-S", "INR 160000.00 debited from A/c no. XX444444 on GARAI GOLD  14-05-2026 16:23:05 IST. Avl bal: INR 139292.00.", D, 160000.0, "GARAI GOLD", "Shopping");
+        check("AX-AXISBK-S", "Your NEFT txn with ref. no. ABC123 for INR 20000 is credited to beneficiary Ravi Kumar on 01-09-26 at 10:00:00 IST - Axis Bank", D, 20000.0, "RAVI KUMAR", "Sent to people");
+        check("AD-AIRBIL-S", "Hi Rahul, we have received a payment of Rs. 999 for your Airtel Wi-Fi ID 123_dsl. To download the payment receipt, click https://x", null, null, null, null);
+        check("AD-INDUSB-S", "Service Alert: Manage this purchase better and split your INR 9000 spend at CITY HOSPITAL into EMIs.", null, null, null, null);
+        check("JM-KOTAKB-S", "INR 12,000.00 is debited from your Account XXXXXX3333 on 07/10/2026 towards NACH-10-HDFC BANK LIMITED Kotak Bank", D, 12000.0, null, "Loan EMI");
+        check("AD-AXISBK-S", "INR 15000.00 debited from A/c no. XX444444 on CITY GOLD  14-05-2026 16:23:05 IST. Avl bal: INR 50000.00.", D, 15000.0, "CITY GOLD", "Shopping");
         System.out.println(fail == 0 ? "\nALL PASSED" : "\nFAILURES: " + fail);
     }
 }

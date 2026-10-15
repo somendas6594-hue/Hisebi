@@ -128,7 +128,7 @@ public final class SmsParser {
         } else if (MERCHANT_RECEIPT.matcher(text).find() && !BANK_MOVE.matcher(text).find()) {
             return null;
         } else if (BENEFICIARY.matcher(text).find()) {
-            // "Your NEFT txn ... is credited to beneficiary Sadhan Das": money went OUT
+            // "Your NEFT txn ... is credited to beneficiary Ravi Kumar": money went OUT
             t.type = ParsedTxn.DEBIT;
         } else {
             int d = firstIndex(DEBIT_WORDS, text);
@@ -244,8 +244,8 @@ public final class SmsParser {
         String s = raw.trim();
         if (s.toLowerCase(Locale.ROOT).startsWith("vpa ")) s = s.substring(4).trim();
 
-        // UPI / bank paths: "UPI/P2M/123456/SWIGGY", "UPI/P2A/123/JOYSHREE /HDFC/Paym",
-        // "MOB/SELFFT/SOMEN DAS/9", "NEFT/CITIN26123/INFI" -> the name part
+        // UPI / bank paths: "UPI/P2M/123456/SWIGGY", "UPI/P2A/123/ANITA /HDFC/Paym",
+        // "MOB/SELFFT/RAHUL KUMAR/9", "NEFT/CITIN26123/ACME" -> the name part
         if (s.contains("/") && !s.toUpperCase(Locale.ROOT).startsWith("A/C")) {
             String[] parts = s.split("/");
             String afterRef = null, firstName = null;
