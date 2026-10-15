@@ -6,10 +6,11 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.provider.Telephony;
 
+import com.somen.hisab.core.Categorizer;
 import com.somen.hisab.core.ParsedTxn;
 import com.somen.hisab.core.SmsParser;
 
-import java.util.List;
+import java.util.Map;
 
 /** Reads the SMS inbox on the phone and stores every transaction it finds. */
 public final class SmsImporter {
@@ -35,7 +36,7 @@ public final class SmsImporter {
     public static int scan(Context c, long since, Progress progress) {
         if (!hasSmsPermission(c)) return 0;
         Db db = Db.get(c);
-        List<String[]> rules = db.userRules();
+        Categorizer.Ctx ctx = db.ctx();
         int added = 0;
         long newest = db.metaLong(KEY_LAST_SCAN, 0);
         String[] cols = {Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE};
@@ -52,14 +53,33 @@ public final class SmsImporter {
                 if (time > newest) newest = time;
                 if (sender == null || body == null) continue;
                 ParsedTxn p = SmsParser.parse(sender, body);
-                if (p != null && db.insertParsed(p, sender, body, time, rules) > 0) added++;
+                if (p != null && db.insertParsed(p, sender, body, time, ctx) > 0) added++;
                 if (progress != null && (i % 50 == 0 || i == total)) progress.onProgress(i, total);
             }
         } catch (SecurityException e) {
             return added;
         }
         db.setMeta(KEY_LAST_SCAN, String.valueOf(newest));
+        if (added > 0) db.reapplyRules();   // own accounts learnt during this scan can turn transfers into self transfers
         return added;
+    }
+
+    /** Re-reads the last 12 months of SMS with the current rules, keeping your own edits. */
+    public static int rebuild(Context c, Progress progress) {
+        Db db = Db.get(c);
+        Map<String, Db.Edit> edits = db.snapshotEdits();
+        db.deleteSmsTransactions();
+        db.setMeta(KEY_LAST_SCAN, "0");
+        int n = scan(c, System.currentTimeMillis() - 365 * DAY, progress);
+        db.restoreEdits(edits);
+        db.setMeta(Db.KEY_PARSER_VERSION, String.valueOf(Db.PARSER_VERSION));
+        return n;
+    }
+
+    public static boolean needsRebuild(Context c) {
+        Db db = Db.get(c);
+        return "1".equals(db.meta(KEY_FIRST_DONE, "0"))
+                && db.metaLong(Db.KEY_PARSER_VERSION, 1) < Db.PARSER_VERSION;
     }
 
     /** Catch up on anything that arrived while the app was closed (with 2 days overlap, duplicates are skipped). */

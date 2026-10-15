@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
     private boolean importing = false;
     private TextView progressText;
     private boolean askedOnce = false;
+    private String importMessage;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -72,6 +73,8 @@ public class MainActivity extends Activity {
         Db db = Db.get(this);
         if (!"1".equals(db.meta(SmsImporter.KEY_FIRST_DONE, "0"))) {
             firstImport();
+        } else if (SmsImporter.needsRebuild(this)) {
+            rebuild("Improved SMS reading: going through your SMS again…");
         } else {
             new Thread(() -> {
                 int n = SmsImporter.catchUp(this);
@@ -107,6 +110,7 @@ public class MainActivity extends Activity {
                 if (progressText != null) progressText.setText("Reading your SMS… " + done + " of " + total);
             }));
             Db.get(this).setMeta(SmsImporter.KEY_FIRST_DONE, "1");
+            Db.get(this).setMeta(Db.KEY_PARSER_VERSION, String.valueOf(Db.PARSER_VERSION));
             runOnUiThread(() -> {
                 importing = false;
                 Toast.makeText(this, "Found " + n + " transactions in the last 12 months", Toast.LENGTH_LONG).show();
@@ -115,13 +119,20 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void rescanYear() {
-        Toast.makeText(this, "Scanning the last 12 months…", Toast.LENGTH_SHORT).show();
+    /** Reads all SMS of the last 12 months again with the current rules. Your edits are kept. */
+    private void rebuild(String message) {
+        if (importing) return;
+        importing = true;
+        importMessage = message;
+        render();
         new Thread(() -> {
-            int n = SmsImporter.scan(this, System.currentTimeMillis() - 365 * SmsImporter.DAY, null);
-            Db.get(this).reapplyRules();
+            int n = SmsImporter.rebuild(this, (done, total) -> runOnUiThread(() -> {
+                if (progressText != null) progressText.setText(importMessage + " " + done + " of " + total);
+            }));
             runOnUiThread(() -> {
-                Toast.makeText(this, n + " new transactions found", Toast.LENGTH_SHORT).show();
+                importing = false;
+                importMessage = null;
+                Toast.makeText(this, n + " transactions found", Toast.LENGTH_SHORT).show();
                 render();
             });
         }).start();
@@ -138,7 +149,7 @@ public class MainActivity extends Activity {
         }
         if (importing) {
             LinearLayout c = Ui.card(this);
-            progressText = Ui.text(this, "Reading your SMS…", 15, Ui.TEXT, true);
+            progressText = Ui.text(this, importMessage != null ? importMessage : "Reading your SMS…", 15, Ui.TEXT, true);
             c.addView(progressText);
             c.addView(Ui.text(this, "This happens once. Only bank, card and UPI messages are kept, on this phone.",
                     13, Ui.MUTED, false));
@@ -349,7 +360,7 @@ public class MainActivity extends Activity {
         menu.add(0, 3, 0, "Add cash spend");
         menu.add(0, 4, 0, "Export this month (CSV)");
         menu.add(0, 5, 0, "Export everything (CSV)");
-        menu.add(0, 6, 0, "Rescan last 12 months");
+        menu.add(0, 6, 0, "Re-read all SMS (keeps your edits)");
         return true;
     }
 
@@ -361,7 +372,7 @@ public class MainActivity extends Activity {
             case 3: TxnEditor.addCash(this, this::render); return true;
             case 4: CsvExport.export(this, Ui.monthStart(offset), Ui.monthEnd(offset), "hisab-" + Ui.monthKey(offset)); return true;
             case 5: CsvExport.export(this, 0, Long.MAX_VALUE, "hisab-all"); return true;
-            case 6: rescanYear(); return true;
+            case 6: rebuild("Reading your SMS again…"); return true;
             default: return super.onOptionsItemSelected(item);
         }
     }

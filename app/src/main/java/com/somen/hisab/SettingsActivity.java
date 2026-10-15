@@ -15,6 +15,8 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.somen.hisab.core.Categorizer;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -60,6 +62,20 @@ public class SettingsActivity extends Activity {
         bc.addView(notify);
         content.addView(bc);
 
+        // ---- your names (to spot transfers between your own accounts)
+        LinearLayout nc = Ui.card(this);
+        nc.addView(Ui.sectionTitle(this, "Your names"));
+        nc.addView(Ui.text(this, "Money sent to or received from these names is a self transfer and is not counted. "
+                + "Add every spelling your banks use.", 12, Ui.MUTED, false));
+        TextView names = Ui.text(this, db.meta(Db.KEY_MY_NAMES, "").isEmpty() ? "None yet" : db.meta(Db.KEY_MY_NAMES, ""),
+                15, Ui.TEXT, true);
+        names.setPadding(0, Ui.dp(this, 10), 0, 0);
+        nc.addView(names);
+        Button editNames = Ui.button(this, "Edit names", false);
+        editNames.setOnClickListener(v -> editNames());
+        nc.addView(spaced(editNames));
+        content.addView(nc);
+
         // ---- categories
         LinearLayout cc = Ui.card(this);
         cc.addView(Ui.sectionTitle(this, "Categories"));
@@ -69,12 +85,20 @@ public class SettingsActivity extends Activity {
             LinearLayout r = Ui.hbox(this);
             r.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6));
             r.addView(Ui.dot(this, Ui.color(cat.color, Ui.MUTED), 12));
-            Switch s = new Switch(this);
-            s.setText(cat.name);
-            s.setTextColor(Ui.TEXT);
-            s.setChecked(cat.counted);
-            s.setOnCheckedChangeListener((sw, on) -> db.setCounted(cat.name, on));
-            r.addView(s, Ui.weight(1));
+            if (Categorizer.neverCounted(cat.name)) {
+                // money moving between your own pockets or coming in: never part of spending
+                LinearLayout col = Ui.vbox(this);
+                col.addView(Ui.text(this, cat.name, 14, Ui.TEXT, false));
+                col.addView(Ui.text(this, "Never counted as spending", 11, Ui.MUTED, false));
+                r.addView(col, Ui.weight(1));
+            } else {
+                Switch s = new Switch(this);
+                s.setText(cat.name);
+                s.setTextColor(Ui.TEXT);
+                s.setChecked(cat.counted);
+                s.setOnCheckedChangeListener((sw, on) -> db.setCounted(cat.name, on));
+                r.addView(s, Ui.weight(1));
+            }
             if (!cat.builtin) {
                 TextView del = Ui.text(this, "  ✕", 18, Ui.MUTED, false);
                 del.setOnClickListener(v -> new AlertDialog.Builder(this)
@@ -164,6 +188,27 @@ public class SettingsActivity extends Activity {
                 .setPositiveButton("Save", (d, w) -> {
                     String s = amount.getText().toString().trim();
                     db.setMeta(Notifier.KEY_BUDGET, s.isEmpty() ? "0" : s);
+                    render();
+                })
+                .show();
+    }
+
+    private void editNames() {
+        Db db = Db.get(this);
+        LinearLayout box = dialogBox();
+        EditText names = new EditText(this);
+        names.setText(db.meta(Db.KEY_MY_NAMES, ""));
+        names.setHint("e.g. SOMEN DAS, SUMEN DAS");
+        box.addView(names);
+        box.addView(Ui.text(this, "Separate names with commas.", 11, Ui.MUTED, false));
+        new AlertDialog.Builder(this)
+                .setTitle("Your names")
+                .setView(box)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> {
+                    db.setMeta(Db.KEY_MY_NAMES, names.getText().toString().trim().toUpperCase(Locale.ROOT));
+                    int n = db.reapplyRules();
+                    Toast.makeText(this, n + " transactions updated", Toast.LENGTH_SHORT).show();
                     render();
                 })
                 .show();

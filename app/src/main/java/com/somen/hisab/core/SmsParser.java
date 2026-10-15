@@ -30,7 +30,9 @@ public final class SmsParser {
     private static final Pattern HARD_SKIP = Pattern.compile(
             "\\bfailed\\b|declined|unsuccessful|could not be processed|not been processed"
             + "|has requested|requested money|collect request|is requesting|request of"
-            + "|will be debited|to be debited|will be credited|would be debited|shall be debited"
+            + "|will be (?:auto[- ]?)?debited|to be debited|will be credited|would be debited|shall be debited"
+            + "|withheld|on hold|into emis?\\b|emi option|convert(?:ed)? (?:in)?to emi|split your"
+            + "|\\bfolio\\b|challan|units? allotted|nav of|passbook balance|\\bepf\\b|bit\\.ly|tradeconf|auto-?debit (?:is )?(?:set|registered|activated)|to deactivate|auto-?renew|you'll be charged|will be charged"
             + "|minimum amount due|min\\.? amt\\.? due|total amount due|amount due|amt due|\\bis due\\b|due on|due date|due by"
             + "|statement (?:has been |is )?generated|bill (?:has been |is )?generated|e-?statement"
             + "|mandate (?:has been |is )?(?:registered|created|successfully set)",
@@ -52,6 +54,18 @@ public final class SmsParser {
             + "|received (?:your |a |the )?payment|thank you for (?:the |your )?payment|payment received|payment of .{0,30} received",
             CI);
 
+    /** A shop's own receipt ("we have received a payment of Rs 499 for your Airtel ...") duplicates the bank SMS. */
+    private static final Pattern MERCHANT_RECEIPT = Pattern.compile(
+            "(?:we have |we've )?received (?:a |your )?payment of|thank you for (?:the |your )?payment"
+            + "|thank you for (?:your )?(?:purchase|shopping|order)|download your (?:bill|invoice)|you're covered", CI);
+    private static final Pattern BANK_MOVE = Pattern.compile(
+            "debited|credited to (?:your )?(?:a/c|ac|account)|deposited|\\bsent\\b|\\bspent\\b", CI);
+    private static final Pattern FOREIGN = Pattern.compile(
+            "\\b(?:USD|SGD|EUR|GBP|AED|THB|MYR|JPY|AUD|CAD|CHF|HKD|CNY|SAR|QAR|IDR|VND|LKR|NPR|KWD|OMR|BHD|NZD)\\s*[0-9]");
+    private static final Pattern HAS_INR = Pattern.compile("\\brs\\.?|\\binr\\b|₹", CI);
+    private static final Pattern BENEFICIARY = Pattern.compile(
+            "credited to (?:the )?beneficiary\\s+([A-Za-z][A-Za-z .]{1,40}?)\\s+(?:on|at|\\.|-)", CI);
+
     // ---- merchant patterns (tried in order) ----
     private static final String NAME = "([A-Za-z0-9][A-Za-z0-9&'._\\-*@/ ]{1,45}?)";
     private static final String END = "\\s*(?:\\bon\\b|\\bvia\\b|\\busing\\b|\\bfor\\b|\\bfrom\\b|\\bref|\\bavl|\\btxn|\\bupi\\b|\\bimps\\b|\\bdate\\b|\\bthru\\b|\\bby\\b|\\bif\\b|\\bnot\\b|\\bbal|\\(|\\.\\s|\\.$|,|;|-\\s|$)";
@@ -59,11 +73,16 @@ public final class SmsParser {
     private static final Pattern M_ICICI = Pattern.compile(";\\s*" + NAME + "\\s+credited", CI);
     private static final Pattern M_TO = Pattern.compile(
             "\\b(?:to|towards|trf to|transfer to)\\s+(?:vpa\\s+|a/c\\s+|ac\\s+)?" + NAME + END, CI);
-    private static final Pattern M_PATH = Pattern.compile("\\b(?:UPI|IMPS|NEFT|POS|ECOM)/[^\\s]{3,80}", CI);
+    private static final Pattern M_PATH = Pattern.compile(
+            "\\b(?:UPI|IMPS|NEFT|RTGS|MOB|POS|ECOM)/.{3,90}?(?=\\.?\\s+(?:not you|not done|avl|chk bal|for any|call|click|ref\\b|-\\s)|\\.\\s|\\s-\\s|\\.?$)",
+            CI);
+    // Axis card: "Spent INR 250 Axis Bank Card no. XX1234 12-10-26 10:11:12 IST Swiggy Limi Avl Limit: ..."
+    private static final Pattern M_IST = Pattern.compile(
+            "\\bIST\\s+([A-Za-z0-9*][A-Za-z0-9&'._\\-* ]{1,40}?)\\s*(?:\\bavl\\b|\\bnot you|\\.\\s|$)", CI);
     private static final Pattern M_INFO = Pattern.compile("\\binfo[:\\-\\s]+([A-Za-z0-9/\\-@._* ]{3,60})", CI);
     private static final Pattern M_VPA = Pattern.compile("([A-Za-z0-9.\\-_]{2,}@[A-Za-z]{2,})");
     private static final Pattern M_ON = Pattern.compile(
-            "\\bon\\s+([A-Za-z][A-Za-z0-9&'._\\- ]{1,40}?)\\s*(?:\\.\\s|\\.$|,|;|\\bavl|\\bon\\b|\\bif\\b|$)", CI);
+            "\\bon\\s+([A-Za-z][A-Za-z0-9&'._\\- ]{1,40}?)\\s*(?:\\.\\s|\\.$|,|;|\\bavl|\\bon\\b|\\bif\\b|\\s\\d{1,2}[-/]|$)", CI);
     private static final Pattern M_FROM = Pattern.compile(
             "\\b(?:from|by)\\s+(?:vpa\\s+)?" + NAME + END, CI);
 
@@ -93,6 +112,8 @@ public final class SmsParser {
         if (HARD_SKIP.matcher(text).find()) return null;
         if (SOFT_SKIP.matcher(text).find() && !strong) return null;
 
+        if (!HAS_INR.matcher(text).find() && FOREIGN.matcher(text).find()) return null;  // forex card, not rupees
+
         Double amount = findAmount(text);
         if (amount == null || amount <= 0) return null;
 
@@ -103,6 +124,11 @@ public final class SmsParser {
         if (mentionsCard && !lower.contains("debit card") && CARD_BILL.matcher(text).find()
                 && !Pattern.compile("\\bspent\\b|used at|purchase", CI).matcher(text).find()) {
             t.type = ParsedTxn.CARD_BILL;
+        } else if (MERCHANT_RECEIPT.matcher(text).find() && !BANK_MOVE.matcher(text).find()) {
+            return null;
+        } else if (BENEFICIARY.matcher(text).find()) {
+            // "Your NEFT txn ... is credited to beneficiary Sadhan Das": money went OUT
+            t.type = ParsedTxn.DEBIT;
         } else {
             int d = firstIndex(DEBIT_WORDS, text);
             int c = firstIndex(CREDIT_WORDS, text);
@@ -113,10 +139,16 @@ public final class SmsParser {
 
         t.mode = detectMode(lower);
         t.account = findAccount(text);
-        if (ParsedTxn.CREDIT.equals(t.type)) {
-            t.merchant = firstGood(text, M_FROM, M_VPA, M_INFO);
+        t.toPerson = Pattern.compile("/P2A/|\\bP2A\\b", CI).matcher(text).find();
+        t.selfTransfer = Pattern.compile("SELFFT|self transfer|own account", CI).matcher(text).find();
+        Matcher ben = BENEFICIARY.matcher(text);
+        if (ben.find()) {
+            t.merchant = cleanMerchant(ben.group(1));
+            t.toPerson = true;
+        } else if (ParsedTxn.CREDIT.equals(t.type)) {
+            t.merchant = firstGood(text, M_PATH, M_FROM, M_VPA, M_INFO);
         } else {
-            t.merchant = firstGood(text, M_AT, M_ICICI, M_PATH, M_TO, M_INFO, M_VPA, M_ON);
+            t.merchant = firstGood(text, M_AT, M_IST, M_ICICI, M_PATH, M_TO, M_INFO, M_VPA, M_ON);
         }
         if (t.merchant == null) t.merchant = "";
         if (ParsedTxn.MODE_ATM.equals(t.mode) && t.merchant.isEmpty()) t.merchant = "ATM";
@@ -199,22 +231,32 @@ public final class SmsParser {
             "BENEFICIARY", "TRANSFER", "NO", "NO.", "A/C NO", "NET BANKING", "NETBANKING", "BRANCH", "THIS", "IT", "ATM CARD"
     };
 
+    private static final java.util.Set<String> PATH_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "UPI", "P2M", "P2A", "IMPS", "NEFT", "RTGS", "MOB", "SELFFT", "POS", "ECOM", "PAYM", "PAYMENT", "DR", "CR",
+            "HDFC", "ICIC", "KKBK", "SBIN", "UTIB", "YESB", "INDB", "BARB", "PUNB", "CNRB", "IDFB"));
+
     static String cleanMerchant(String raw) {
         if (raw == null) return null;
         String s = raw.trim();
         if (s.toLowerCase(Locale.ROOT).startsWith("vpa ")) s = s.substring(4).trim();
 
-        // UPI paths like "UPI/P2M/123456/SWIGGY" -> SWIGGY
+        // UPI / bank paths: "UPI/P2M/123456/SWIGGY", "UPI/P2A/123/JOYSHREE /HDFC/Paym",
+        // "MOB/SELFFT/SOMEN DAS/9", "NEFT/CITIN26123/INFI" -> the name part
         if (s.contains("/") && !s.toUpperCase(Locale.ROOT).startsWith("A/C")) {
             String[] parts = s.split("/");
-            String best = null;
+            String afterRef = null, firstName = null;
+            boolean sawRef = false;
             for (String part : parts) {
                 String p = part.trim();
                 String up = p.toUpperCase(Locale.ROOT);
+                boolean isRef = p.replaceAll("[^0-9]", "").length() >= 5;
+                if (isRef) { sawRef = true; continue; }
                 if (p.length() < 3 || !p.matches(".*[A-Za-z].*")) continue;
-                if (up.equals("UPI") || up.equals("P2M") || up.equals("P2A") || up.equals("IMPS") || up.equals("NEFT")) continue;
-                best = p;
+                if (PATH_WORDS.contains(up)) continue;
+                if (firstName == null) firstName = p;
+                if (sawRef && afterRef == null) afterRef = p;
             }
+            String best = afterRef != null ? afterRef : firstName;
             if (best != null) s = best;
         }
 

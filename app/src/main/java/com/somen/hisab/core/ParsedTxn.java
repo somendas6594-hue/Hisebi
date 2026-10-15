@@ -23,6 +23,8 @@ public class ParsedTxn {
     public String mode;
     public String merchant;   // cleaned, upper case, may be "" if unknown
     public String account;    // last digits of account / card, may be ""
+    public boolean toPerson;  // UPI P2A or bank transfer to a named person
+    public boolean selfTransfer; // bank says it is between your own accounts
 
     @Override
     public String toString() {

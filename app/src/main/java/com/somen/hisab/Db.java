@@ -31,7 +31,7 @@ public final class Db extends SQLiteOpenHelper {
     }
 
     private Db(Context c) {
-        super(c, "hisab.db", null, 1);
+        super(c, "hisab.db", null, 2);
     }
 
     @Override
@@ -39,11 +39,16 @@ public final class Db extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE txn(_id INTEGER PRIMARY KEY AUTOINCREMENT, sms_key TEXT UNIQUE, time INTEGER, "
                 + "amount REAL, type TEXT, mode TEXT, merchant TEXT, account TEXT, sender TEXT, body TEXT, "
                 + "category TEXT, manual_cat INTEGER DEFAULT 0, excluded INTEGER DEFAULT 0, "
-                + "duplicate INTEGER DEFAULT 0, note TEXT)");
+                + "duplicate INTEGER DEFAULT 0, note TEXT, person INTEGER DEFAULT 0, self INTEGER DEFAULT 0)");
         db.execSQL("CREATE INDEX txn_time ON txn(time)");
         db.execSQL("CREATE TABLE category(name TEXT PRIMARY KEY, counted INTEGER, color TEXT, sort INTEGER, builtin INTEGER)");
         db.execSQL("CREATE TABLE rule(_id INTEGER PRIMARY KEY AUTOINCREMENT, keyword TEXT, category TEXT)");
         db.execSQL("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT)");
+        seedCategories(db);
+        seedNames(db);
+    }
+
+    private static void seedCategories(SQLiteDatabase db) {
         int i = 0;
         for (String[] c : Categorizer.DEFAULT_CATEGORIES) {
             ContentValues v = new ContentValues();
@@ -52,14 +57,40 @@ public final class Db extends SQLiteOpenHelper {
             v.put("color", c[2]);
             v.put("sort", i++);
             v.put("builtin", 1);
-            db.insert("category", null, v);
+            db.insertWithOnConflict("category", null, v, SQLiteDatabase.CONFLICT_IGNORE);
+            // keep the built-in order even for categories that already existed
+            ContentValues o = new ContentValues();
+            o.put("sort", i - 1);
+            db.update("category", o, "name=?", new String[]{c[0]});
         }
+    }
+
+    private static void seedNames(SQLiteDatabase db) {
+        ContentValues v = new ContentValues();
+        v.put("k", KEY_MY_NAMES);
+        v.put("v", "SOMEN DAS, SUMEN DAS");
+        db.insertWithOnConflict("meta", null, v, SQLiteDatabase.CONFLICT_IGNORE);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
-        // first version, nothing to migrate yet
+        if (oldV < 2) {
+            db.execSQL("ALTER TABLE txn ADD COLUMN person INTEGER DEFAULT 0");
+            db.execSQL("ALTER TABLE txn ADD COLUMN self INTEGER DEFAULT 0");
+            seedCategories(db);
+            seedNames(db);
+            // version 1 could end up counting these; start them off again as "not counted"
+            ContentValues v = new ContentValues();
+            v.put("counted", 0);
+            db.update("category", v, "name IN (?,?,?,?)", new String[]{
+                    Categorizer.INVESTMENTS, Categorizer.CARD_BILL, Categorizer.SELF, Categorizer.INCOME});
+        }
     }
+
+    /** Bump when SmsParser / Categorizer change, so stored SMS are read again with the new rules. */
+    public static final int PARSER_VERSION = 2;
+    public static final String KEY_PARSER_VERSION = "parser_version";
+    public static final String KEY_MY_NAMES = "my_names";
 
     // ------------------------------------------------------------------ meta
 
@@ -82,6 +113,38 @@ public final class Db extends SQLiteOpenHelper {
         cv.put("k", k);
         cv.put("v", v);
         getWritableDatabase().insertWithOnConflict("meta", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    // ------------------------------------------------------------------ who you are
+
+    public List<String> myNames() {
+        List<String> out = new ArrayList<>();
+        for (String n : meta(KEY_MY_NAMES, "").split(",")) {
+            String t = n.trim();
+            if (!t.isEmpty()) out.add(t.toUpperCase(java.util.Locale.ROOT));
+        }
+        return out;
+    }
+
+    /** Last 4 digits of your bank accounts, learnt from the SMS themselves. */
+    public Set<String> ownAccounts() {
+        Set<String> s = new HashSet<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT DISTINCT account FROM txn WHERE account<>'' AND LOWER(mode) NOT LIKE '%card%'", null)) {
+            while (c.moveToNext()) {
+                String a = c.getString(0);
+                if (a != null && a.length() >= 3) s.add(a.length() > 4 ? a.substring(a.length() - 4) : a);
+            }
+        }
+        return s;
+    }
+
+    public Categorizer.Ctx ctx() {
+        Categorizer.Ctx c = new Categorizer.Ctx();
+        c.userRules = userRules();
+        c.ownAccounts = ownAccounts();
+        c.myNames = myNames();
+        return c;
     }
 
     // ------------------------------------------------------------------ categories
@@ -181,17 +244,21 @@ public final class Db extends SQLiteOpenHelper {
 
     /** Re-runs categorisation on every transaction the user has not fixed by hand. Returns how many changed. */
     public int reapplyRules() {
-        List<String[]> user = userRules();
+        Categorizer.Ctx ctx = ctx();
         SQLiteDatabase db = getWritableDatabase();
         int changed = 0;
         db.beginTransaction();
-        try (Cursor c = db.rawQuery("SELECT _id, type, mode, merchant, body, category FROM txn WHERE manual_cat=0", null)) {
+        try (Cursor c = db.rawQuery("SELECT _id, type, mode, merchant, body, category, person, self, sender "
+                + "FROM txn WHERE manual_cat=0", null)) {
             while (c.moveToNext()) {
                 ParsedTxn p = new ParsedTxn();
                 p.type = c.getString(1);
                 p.mode = c.getString(2);
                 p.merchant = c.getString(3);
-                String cat = Categorizer.categorize(p, c.getString(4), user);
+                p.toPerson = c.getInt(6) == 1;
+                p.selfTransfer = c.getInt(7) == 1;
+                ctx.sender = c.getString(8);
+                String cat = Categorizer.categorize(p, c.getString(4), ctx);
                 if (!cat.equals(c.getString(5))) {
                     ContentValues v = new ContentValues();
                     v.put("category", cat);
@@ -222,7 +289,7 @@ public final class Db extends SQLiteOpenHelper {
     }
 
     /** @return the new row id, or -1 if this SMS was already stored. */
-    public long insertParsed(ParsedTxn p, String sender, String body, long time, List<String[]> userRules) {
+    public long insertParsed(ParsedTxn p, String sender, String body, long time, Categorizer.Ctx ctx) {
         String key = smsKey(sender, body, time);
         SQLiteDatabase db = getWritableDatabase();
         try (Cursor c = db.rawQuery("SELECT 1 FROM txn WHERE sms_key=?", new String[]{key})) {
@@ -246,8 +313,11 @@ public final class Db extends SQLiteOpenHelper {
         v.put("account", p.account);
         v.put("sender", sender);
         v.put("body", body);
-        v.put("category", Categorizer.categorize(p, body, userRules));
+        ctx.sender = sender;
+        v.put("category", Categorizer.categorize(p, body, ctx));
         v.put("duplicate", dup ? 1 : 0);
+        v.put("person", p.toPerson ? 1 : 0);
+        v.put("self", p.selfTransfer ? 1 : 0);
         return db.insertWithOnConflict("txn", null, v, SQLiteDatabase.CONFLICT_IGNORE);
     }
 
@@ -351,6 +421,50 @@ public final class Db extends SQLiteOpenHelper {
         return out;
     }
 
+    /** Your edits on SMS transactions, so they survive re-reading the SMS. */
+    public static class Edit {
+        String category, merchant, note;
+        boolean manualCat, excluded, notDuplicate;
+    }
+
+    public Map<String, Edit> snapshotEdits() {
+        Map<String, Edit> m = new HashMap<>();
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT sms_key, category, merchant, note, manual_cat, excluded "
+                + "FROM txn WHERE sms_key LIKE 'sms:%' AND (manual_cat=1 OR excluded=1 OR (note IS NOT NULL AND note<>''))",
+                null)) {
+            while (c.moveToNext()) {
+                Edit e = new Edit();
+                e.category = c.getString(1);
+                e.merchant = c.getString(2);
+                e.note = c.getString(3);
+                e.manualCat = c.getInt(4) == 1;
+                e.excluded = c.getInt(5) == 1;
+                m.put(c.getString(0), e);
+            }
+        }
+        return m;
+    }
+
+    public void deleteSmsTransactions() {
+        getWritableDatabase().delete("txn", "sms_key LIKE 'sms:%'", null);
+    }
+
+    public void restoreEdits(Map<String, Edit> edits) {
+        SQLiteDatabase db = getWritableDatabase();
+        for (Map.Entry<String, Edit> e : edits.entrySet()) {
+            Edit x = e.getValue();
+            ContentValues v = new ContentValues();
+            if (x.manualCat) {
+                v.put("category", x.category);
+                v.put("manual_cat", 1);
+                v.put("merchant", x.merchant);
+            }
+            v.put("excluded", x.excluded ? 1 : 0);
+            v.put("note", x.note);
+            db.update("txn", v, "sms_key=?", new String[]{e.getKey()});
+        }
+    }
+
     public long countAll() {
         try (Cursor c = getReadableDatabase().rawQuery("SELECT COUNT(*) FROM txn", null)) {
             return c.moveToFirst() ? c.getLong(0) : 0;
@@ -379,7 +493,7 @@ public final class Db extends SQLiteOpenHelper {
 
     public Set<String> countedCategories() {
         Set<String> s = new HashSet<>();
-        for (Category c : categories()) if (c.counted) s.add(c.name);
+        for (Category c : categories()) if (c.counted && !Categorizer.neverCounted(c.name)) s.add(c.name);
         return s;
     }
 

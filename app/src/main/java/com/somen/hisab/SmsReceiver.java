@@ -48,7 +48,7 @@ public class SmsReceiver extends BroadcastReceiver {
                     String body = e.getValue().toString();
                     ParsedTxn p = SmsParser.parse(sender, body);
                     if (p == null) continue;
-                    long id = db.insertParsed(p, sender, body, now, db.userRules());
+                    long id = db.insertParsed(p, sender, body, now, db.ctx());
                     if (id > 0) Notifier.onNewTransaction(app, id);
                 }
             } catch (Exception ignored) {
