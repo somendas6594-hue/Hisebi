@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.somen.hisab'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.somen.hisab"
+        minSdk 29
+        targetSdk 34
+        // CI passes the run number so every build installs as an update
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
+        versionName "1.0." + (System.getenv("VERSION_CODE") ?: "1")
+    }
+
+    // One fixed key, so each new APK installs over the old one and keeps your data.
+    signingConfigs {
+        hisab {
+            storeFile file('hisab.keystore')
+            storePassword 'hisab123'
+            keyAlias 'hisab'
+            keyPassword 'hisab123'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.hisab
+        }
+        debug {
+            signingConfig signingConfigs.hisab
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
