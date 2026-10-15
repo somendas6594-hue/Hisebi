@@ -88,7 +88,7 @@ public final class Db extends SQLiteOpenHelper {
     }
 
     /** Bump when SmsParser / Categorizer change, so stored SMS are read again with the new rules. */
-    public static final int PARSER_VERSION = 2;
+    public static final int PARSER_VERSION = 3;
     public static final String KEY_PARSER_VERSION = "parser_version";
     public static final String KEY_MY_NAMES = "my_names";
 

@@ -140,8 +140,10 @@ public final class Categorizer {
             {"coin by", INVESTMENTS}, {"indmoney", INVESTMENTS}, {"mutual fund", INVESTMENTS},
             {"bse ltd", INVESTMENTS}, {"nse clearing", INVESTMENTS}, {"iccl", INVESTMENTS},
             {"indian clearing", INVESTMENTS}, {"nps", INVESTMENTS}, {"ppf", INVESTMENTS}, {"sip", INVESTMENTS},
-            {"smallcase", INVESTMENTS}, {"paytm money", INVESTMENTS},
+            {"smallcase", INVESTMENTS}, {"paytm money", INVESTMENTS}, {"growwinv", INVESTMENTS}, {"groww inv", INVESTMENTS},
             {"mutual funds", INVESTMENTS}, {"zerodha", INVESTMENTS}, {"angel one", INVESTMENTS},
+            // CRED sending credit card money to your own bank account (rent pay / send money)
+            {"dreamplug", SELF}, {"dreampur", SELF},
             // credit card bill payments (not counted: the swipes already were)
             {"cred", CARD_BILL}, {"credit card", CARD_BILL}, {"cc payment", CARD_BILL}, {"ccpayment", CARD_BILL},
             {"card bill", CARD_BILL}, {"cardbill", CARD_BILL}, {"sbi card", CARD_BILL}, {"cc bill", CARD_BILL},
@@ -182,6 +184,9 @@ public final class Categorizer {
 
         if (ParsedTxn.CREDIT.equals(t.type)) {
             if (ctx.sender != null && ctx.sender.toUpperCase(Locale.ROOT).contains("CREDWL")) return SELF; // wallet top-up
+            String b = bestMatch(merchant, DEFAULT_RULES);
+            if (INVESTMENTS.equals(b)) return INVESTMENTS;   // redemption: your own money coming back
+            if (SELF.equals(b)) return SELF;
             return INCOME;
         }
 

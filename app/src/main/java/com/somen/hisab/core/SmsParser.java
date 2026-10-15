@@ -51,7 +51,8 @@ public final class SmsParser {
 
     private static final Pattern CARD_BILL = Pattern.compile(
             "(?:payment|repayment)(?: of)?\\s*(?:rs\\.?|inr|₹)?[^a-z]{0,20}(?:has been |is |was )?(?:received|credited|successful|towards)"
-            + "|received (?:your |a |the )?payment|thank you for (?:the |your )?payment|payment received|payment of .{0,30} received",
+            + "|received (?:your |a |the )?payment|thank you for (?:the |your )?payment|payment received|payment of .{0,30} received"
+            + "|payment .{0,60}(?:was |has been |is )?credited to your (?:credit )?card",
             CI);
 
     /** A shop's own receipt ("we have received a payment of Rs 499 for your Airtel ...") duplicates the bank SMS. */
@@ -67,14 +68,14 @@ public final class SmsParser {
             "credited to (?:the )?beneficiary\\s+([A-Za-z][A-Za-z .]{1,40}?)\\s+(?:on|at|\\.|-)", CI);
 
     // ---- merchant patterns (tried in order) ----
-    private static final String NAME = "([A-Za-z0-9][A-Za-z0-9&'._\\-*@/ ]{1,45}?)";
+    private static final String NAME = "([A-Za-z0-9.+][A-Za-z0-9&'._\\-*@/+ ]{1,45}?)";
     private static final String END = "\\s*(?:\\bon\\b|\\bvia\\b|\\busing\\b|\\bfor\\b|\\bfrom\\b|\\bref|\\bavl|\\btxn|\\bupi\\b|\\bimps\\b|\\bdate\\b|\\bthru\\b|\\bby\\b|\\bif\\b|\\bnot\\b|\\bbal|\\(|\\.\\s|\\.$|,|;|-\\s|$)";
     private static final Pattern M_AT = Pattern.compile("\\bat\\s+" + NAME + END, CI);
     private static final Pattern M_ICICI = Pattern.compile(";\\s*" + NAME + "\\s+credited", CI);
     private static final Pattern M_TO = Pattern.compile(
             "\\b(?:to|towards|trf to|transfer to)\\s+(?:vpa\\s+|a/c\\s+|ac\\s+)?" + NAME + END, CI);
     private static final Pattern M_PATH = Pattern.compile(
-            "\\b(?:UPI|IMPS|NEFT|RTGS|MOB|POS|ECOM)/.{3,90}?(?=\\.?\\s+(?:not you|not done|avl|chk bal|for any|call|click|ref\\b|-\\s)|\\.\\s|\\s-\\s|\\.?$)",
+            "\\b(?:UPI|IMPS|NEFT|RTGS|MOB|POS|ECOM)/.{3,90}?(?=\\.?\\s+(?:not you|not done|avl|chk bal|view bal|for any|call|click|ref\\b|-\\s)|\\.(?:view|chk) bal|\\.\\s|\\s-\\s|\\.?$)",
             CI);
     // Axis card: "Spent INR 250 Axis Bank Card no. XX1234 12-10-26 10:11:12 IST Swiggy Limi Avl Limit: ..."
     private static final Pattern M_IST = Pattern.compile(
@@ -82,7 +83,7 @@ public final class SmsParser {
     private static final Pattern M_INFO = Pattern.compile("\\binfo[:\\-\\s]+([A-Za-z0-9/\\-@._* ]{3,60})", CI);
     private static final Pattern M_VPA = Pattern.compile("([A-Za-z0-9.\\-_]{2,}@[A-Za-z]{2,})");
     private static final Pattern M_ON = Pattern.compile(
-            "\\bon\\s+([A-Za-z][A-Za-z0-9&'._\\- ]{1,40}?)\\s*(?:\\.\\s|\\.$|,|;|\\bavl|\\bon\\b|\\bif\\b|\\s\\d{1,2}[-/]|$)", CI);
+            "\\bon\\s+\\+?([A-Za-z][A-Za-z0-9&'._\\- ]{1,40}?)\\s*(?:\\.\\s|\\.$|,|;|\\bavl|\\bon\\b|\\bif\\b|\\s\\d{1,2}[-/]|$)", CI);
     private static final Pattern M_FROM = Pattern.compile(
             "\\b(?:from|by)\\s+(?:vpa\\s+)?" + NAME + END, CI);
 
@@ -141,10 +142,13 @@ public final class SmsParser {
         t.account = findAccount(text);
         t.toPerson = Pattern.compile("/P2A/|\\bP2A\\b", CI).matcher(text).find();
         t.selfTransfer = Pattern.compile("SELFFT|self transfer|own account", CI).matcher(text).find();
+        Matcher mob = Pattern.compile("a/c linked to mobile (?:no\\.? )?[x*]*([0-9]{3,4})", CI).matcher(text);
         Matcher ben = BENEFICIARY.matcher(text);
         if (ben.find()) {
             t.merchant = cleanMerchant(ben.group(1));
             t.toPerson = true;
+        } else if (mob.find()) {
+            t.merchant = "MOBILE ••" + mob.group(1);
         } else if (ParsedTxn.CREDIT.equals(t.type)) {
             t.merchant = firstGood(text, M_PATH, M_FROM, M_VPA, M_INFO);
         } else {
@@ -269,7 +273,7 @@ public final class SmsParser {
         }
 
         s = s.replaceAll("[*_]+", " ").replaceAll("\\s+", " ").trim();
-        s = s.replaceAll("^[\\-.,' ]+|[\\-.,' ]+$", "");
+        s = s.replaceAll("^[\\-.,'+ ]+|[\\-.,'_ ]+$", "");
         if (s.isEmpty()) return null;
 
         String up = s.toUpperCase(Locale.ROOT);
